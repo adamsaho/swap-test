@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LGNS ⇄ DAI Swap</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0d1117; --card:#161b22; --card2:#1c2330; --border:#2b3442;
+    --text:#e6edf3; --muted:#8b949e; --accent:#2f81f7; --accent2:#1f6feb;
+    --green:#3fb950; --red:#f85149; --yellow:#d29922;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif;}
+  body{background:radial-gradient(1200px 600px at 50% -10%,#12203a 0%,var(--bg) 55%);
+       min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--text);padding:24px;}
+  .wrap{width:100%;max-width:440px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;
+        box-shadow:0 20px 60px rgba(0,0,0,.5);}
+  .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+  .head h1{font-size:18px;font-weight:600;}
+  .icon-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;padding:6px;border-radius:8px;}
+  .icon-btn:hover{background:var(--card2);color:var(--text);}
+  .wallet-btn{background:var(--accent);color:#fff;border:none;padding:10px 16px;border-radius:12px;
+              font-weight:600;cursor:pointer;font-size:14px;transition:.15s;width:100%;margin-bottom:16px;}
+  .wallet-btn:hover{background:var(--accent2);}
+  .wallet-btn.connected{background:var(--card2);color:var(--green);border:1px solid var(--border);}
+  .field{background:var(--card2);border:1px solid var(--border);border-radius:16px;padding:14px 16px;
+         transition:border-color .15s;}
+  .field:focus-within{border-color:var(--accent);}
+  .field label{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;}
+  .row{display:flex;align-items:center;gap:10px;margin-top:8px;}
+  .row input{flex:1;background:transparent;border:none;outline:none;color:var(--text);
+             font-size:26px;font-weight:500;min-width:0;}
+  .row input::placeholder{color:#48505c;}
+  .token{display:flex;align-items:center;gap:8px;background:#232b3a;padding:8px 14px;border-radius:99px;
+         cursor:pointer;border:1px solid transparent;transition:.15s;user-select:none;}
+  .token:hover{border-color:var(--accent);}
+  .token img{width:22px;height:22px;border-radius:50%;}
+  .token span{font-weight:600;font-size:15px;}
+  .swap-arrow{display:flex;justify-content:center;margin:10px 0;position:relative;}
+  .swap-arrow button{background:var(--card2);border:2px solid var(--card);color:var(--accent);
+    width:38px;height:38px;border-radius:12px;cursor:pointer;font-size:16px;transition:.2s;}
+  .swap-arrow button:hover{transform:rotate(180deg);border-color:var(--accent);}
+  .info{margin-top:14px;font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:6px;}
+  .info .line{display:flex;justify-content:space-between;}
+  .info .line b{color:var(--text);font-weight:500;}
+  .impact-high{color:var(--red);} .impact-med{color:var(--yellow);} .impact-low{color:var(--green);}
+  .swap-btn{width:100%;margin-top:16px;padding:15px;border:none;border-radius:14px;font-size:16px;
+    font-weight:700;cursor:pointer;background:var(--accent);color:#fff;transition:.15s;}
+  .swap-btn:disabled{background:var(--card2);color:var(--muted);cursor:not-allowed;}
+  .swap-btn:not(:disabled):hover{background:var(--accent2);}
+  /* settings popover */
+  .settings{display:none;position:absolute;top:38px;right:0;background:var(--card2);
+    border:1px solid var(--border);border-radius:12px;padding:14px;width:220px;z-index:10;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);}
+  .settings.open{display:block;}
+  .settings h3{font-size:13px;color:var(--muted);margin-bottom:10px;font-weight:500;}
+  .slip-row{display:flex;gap:6px;}
+  .slip-row button{flex:1;background:transparent;border:1px solid var(--border);color:var(--muted);
+    padding:6px;border-radius:8px;cursor:pointer;font-size:12px;}
+  .slip-row button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .slip-row button:hover:not(.active){border-color:var(--accent);color:var(--text);}
+  .head-right{display:flex;gap:4px;position:relative;}
+  .pill{font-size:11px;background:#232b3a;padding:3px 8px;border-radius:99px;color:var(--muted);}
+  .status{margin-top:12px;font-size:12px;text-align:center;color:var(--muted);min-height:16px;}
+  .status.ok{color:var(--green);} .status.err{color:var(--red);}
+  /* token modal */
+  .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+    align-items:center;justify-content:center;z-index:50;}
+  .modal.open{display:flex;}
+  .modal-card{background:var(--card);border:1px solid var(--border);border-radius:20px;
+    width:90%;max-width:360px;padding:20px;}
+  .modal-card h2{font-size:16px;margin-bottom:14px;display:flex;justify-content:space-between;}
+  .tok-list{display:flex;flex-direction:column;gap:6px;}
+  .tok-item{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;cursor:pointer;}
+  .tok-item:hover{background:var(--card2);}
+  .tok-item img{width:32px;height:32px;border-radius:50%;}
+  .tok-item .sym{font-weight:600;}
+  .tok-item .name{font-size:12px;color:var(--muted);}
+</style>
+<base target="_blank">
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="head">
+      <h1>Swap</h1>
+      <div class="head-right">
+        <button class="icon-btn" id="settingsBtn" title="Settings">⚙️</button>
+        <div class="settings" id="settingsPanel">
+          <h3>Slippage tolerance</h3>
+          <div class="slip-row">
+            <button data-slip="0.1">0.1%</button>
+            <button data-slip="0.5" class="active">0.5%</button>
+            <button data-slip="1">1.0%</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="wallet-btn" id="connectBtn">Connect Wallet</button>
+
+    <!-- SELL -->
+    <div class="field">
+      <label><span>Sell</span><span id="balIn">Balance: –</span></label>
+      <div class="row">
+        <input id="amountIn" type="text" inputmode="decimal" placeholder="0.0" autocomplete="off">
+        <div class="token" id="tokenInBtn">
+          <img id="logoIn" src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0x6B175474E89094C44Da98b954EedeAC495271d0F/logo.png" alt="">
+          <span id="symIn">LGNS</span> ▾
+        </div>
+      </div>
+    </div>
+
+    <div class="swap-arrow"><button id="flipBtn" title="Flip">⇅</button></div>
+
+    <!-- BUY -->
+    <div class="field">
+      <label><span>Buy</span><span id="balOut">Balance: –</span></label>
+      <div class="row">
+        <input id="amountOut" type="text" placeholder="0.0" readonly>
+        <div class="token" id="tokenOutBtn">
+          <img id="logoOut" src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0x6B175474E89094C44Da98b954EedeAC495271d0F/logo.png" alt="">
+          <span id="symOut">DAI</span> ▾
+        </div>
+      </div>
+    </div>
+
+    <div class="info">
+      <div class="line"><span>Rate</span><b id="rate">–</b></div>
+      <div class="line"><span>Price impact</span><b id="impact">–</b></div>
+      <div class="line"><span>Fee (0.30%)</span><b id="fee">–</b></div>
+      <div class="line"><span>Min. received</span><b id="minOut">–</b></div>
+    </div>
+
+    <button class="swap-btn" id="swapBtn" disabled>Enter an amount</button>
+    <div class="status" id="status"></div>
+  </div>
+</div>
+
+<!-- Token modal -->
+<div class="modal" id="modal">
+  <div class="modal-card">
+    <h2>Select token <button class="icon-btn" id="modalClose">✕</button></h2>
+    <div class="tok-list" id="tokList"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   LGNS ⇄ DAI swap interface
+   - If MetaMask / Web3 is available, quotes & swaps go through
+     the Uniswap V2 pair contract (IUniswapV2Pair ABI).
+   - Otherwise it falls back to a built-in demo pool so the UI
+     works instantly.
+   ============================================================ */
+
+// ---------- config ----------
+const TOKENS = {
+  LGNS: { symbol:'LGNS', name:'Legends Token',  address:null, decimals:18,
+          logo:'https://whattofarm.io/assets/dex/tokens/200/origin-lgns-lgns-logo.webp' },
+  DAI:  { symbol:'DAI',  name:'Dai Stablecoin', address:'0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals:18,
+          logo:'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0x6B175474E89094C44Da98b954EedeAC495271d0F/logo.png' },
+};
+const PAIR_ADDRESS = '0xPASTE_YOUR_LGNS_DAI_PAIR_ADDRESS_HERE'; // from the factory
+const FEE = 0.003;                       // 0.30% Uniswap V2 fee
+let slip = 0.5;                          // slippage %
+
+// demo pool (used when no wallet connected): reserves in whole tokens
+const demoPool = { reserveIn: 1_000_000, reserveOut: 250_000 };
+
+// ---------- state ----------
+let tokenIn  = 'LGNS';
+let tokenOut = 'DAI';
+let provider = null, signer = null, pairContract = null, userAddress = null;
+let connected = false;
+
+const $ = id => document.getElementById(id);
+
+// ---------- tiny helpers ----------
+const fmt = (n, d=4) => {
+  if (!isFinite(n)) return '–';
+  return n.toLocaleString('en-US', { maximumFractionDigits: d });
+};
+function parseNum(v){ const n = parseFloat(v); return isFinite(n) && n > 0 ? n : 0; }
+
+// Uniswap V2 constant-product quote: amountOut = (amountIn*997*reserveOut)/(reserveIn*1000 + amountIn*997)
+function quote(amountIn, resIn, resOut){
+  const a = amountIn * 997, num = a * resOut, den = resIn * 1000 + a;
+  return num / den;
+}
+function priceImpact(amountIn, resIn){
+  const spot = resOut_/resIn;
+  const exec = quote(amountIn, resIn, resOut_)/amountIn;
+  return (1 - exec/spot) * 100;
+}
+let resIn_=0, resOut_=0; // cache of reserves in "token units"
+
+// ---------- reserves ----------
+async function loadReserves(){
+  if (connected && pairContract){
+    try{
+      const r = await pairContract.getReserves();
+      const t0 = await pairContract.token0();
+      // map reserve0/1 to in/out according to token order
+      const inAddr  = TOKENS[tokenIn].address;
+      const [r0, r1] = [Number(r.reserve0)/1e18, Number(r.reserve1)/1e18];
+      if ((inAddr || tokenIn==='LGNS')) { /* generic mapping below */ }
+      const inIs0 = (t0.toLowerCase() === (TOKENS[tokenIn].address||'').toLowerCase());
+      resIn_  = inIs0 ? r0 : r1;
+      resOut_ = inIs0 ? r1 : r0;
+      return;
+    }catch(e){ console.warn('getReserves failed, using demo pool', e); }
+  }
+  resIn_  = demoPool.reserveIn;
+  resOut_ = demoPool.reserveOut;
+}
+
+// ---------- quote & UI update ----------
+async function recalc(){
+  const amtIn = parseNum($('amountIn').value);
+  await loadReserves();
+  if (!amtIn){
+    $('amountOut').value=''; $('rate').textContent='–'; $('impact').textContent='–';
+    $('fee').textContent='–'; $('minOut').textContent='–';
+    $('swapBtn').disabled = true; $('swapBtn').textContent='Enter an amount';
+    return;
+  }
+  const out = quote(amtIn, resIn_, resOut_);
+  const impact = priceImpact(amtIn, resIn_);
+  const feeAmt = amtIn * FEE;
+  const minOut = out * (1 - slip/100);
+
+  $('amountOut').value = fmt(out, 6);
+  $('rate').textContent  = `1 ${tokenIn} ≈ ${fmt(out/amtIn, 6)} ${tokenOut}`;
+  $('fee').textContent   = `${fmt(feeAmt, 6)} ${tokenIn}`;
+  $('minOut').textContent= `${fmt(minOut, 6)} ${tokenOut}`;
+
+  const el = $('impact');
+  el.textContent = impact.toFixed(2)+'%';
+  el.className = impact > 5 ? 'impact-high' : impact > 1 ? 'impact-med' : 'impact-low';
+
+  $('swapBtn').disabled = false;
+  $('swapBtn').textContent = connected ? `Swap ${tokenIn} → ${tokenOut}` : 'Swap (demo mode)';
+}
+
+// ---------- token modal ----------
+let modalTarget = 'in';
+function openModal(which){
+  modalTarget = which;
+  const list = $('tokList'); list.innerHTML='';
+  Object.values(TOKENS).forEach(t=>{
+    const other = which==='in' ? tokenOut : tokenIn;
+    if (t.symbol === other) return;
+    const div = document.createElement('div');
+    div.className='tok-item';
+    div.innerHTML = `<img src="${t.logo}"><div><div class="sym">${t.symbol}</div><div class="name">${t.name}</div></div>`;
+    div.onclick = ()=>{ selectToken(t.symbol, which); $('modal').classList.remove('open'); };
+    list.appendChild(div);
+  });
+  $('modal').classList.add('open');
+}
+function selectToken(sym, which){
+  if (which==='in'){
+    if (sym === tokenOut) tokenOut = tokenIn;   // auto-swap the other side
+    tokenIn = sym;
+  } else {
+    if (sym === tokenIn) tokenIn = tokenOut;
+    tokenOut = sym;
+  }
+  renderTokens(); recalc();
+}
+function renderTokens(){
+  $('symIn').textContent  = tokenIn;  $('logoIn').src  = TOKENS[tokenIn].logo;
+  $('symOut').textContent = tokenOut; $('logoOut').src = TOKENS[tokenOut].logo;
+  $('balIn').textContent  = `Balance: ${connected? balances[tokenIn]??'–' : '–'}`;
+  $('balOut').textContent = `Balance: ${connected? balances[tokenOut]??'–' : '–'}`;
+}
+
+// ---------- wallet ----------
+let balances = {};
+async function connect(){
+  if (typeof window.ethereum === 'undefined'){
+    setStatus('No wallet found – running in demo mode', 'err');
+    $('connectBtn').textContent = 'Demo Mode (no wallet)';
+    return;
+  }
+  try{
+    // minimal ethers-free raw JSON-RPC via ethereum provider
+    const accounts = await window.ethereum.request({ method:'eth_requestAccounts' });
+    userAddress = accounts[0];
+    connected = true;
+    $('connectBtn').textContent = userAddress.slice(0,6)+'…'+userAddress.slice(-4);
+    $('connectBtn').classList.add('connected');
+
+    // Pair contract (UniswapV2Pair ABI subset)
+    const PAIR_ABI = [
+      {"inputs":[],"name":"getReserves","outputs":[{"internalType":"uint112","name":"reserve0","type":"uint112"},{"internalType":"uint112","name":"reserve1","type":"uint112"},{"internalType":"uint32","name":"blockTimestampLast","type":"uint32"}],"stateMutability":"view","type":"function"},
+      {"inputs":[],"name":"token0","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},
+      {"inputs":[{"internalType":"uint256","name":"amount0Out","type":"uint256"},{"internalType":"uint256","name":"amount1Out","type":"uint256"},{"internalType":"address","name":"to","type":"address"},{"internalType":"bytes","name":"data","type":"bytes"}],"name":"swap","outputs":[],"stateMutability":"nonpayable","type":"function"}
+    ];
+    pairContract = new window.ethers.Contract(PAIR_ADDRESS, PAIR_ABI,
+                        new window.ethers.providers.Web3Provider(window.ethereum));
+    await refreshBalances();
+    setStatus('Wallet connected', 'ok');
+    recalc();
+  }catch(e){ setStatus('Connection rejected', 'err'); }
+}
+
+async function refreshBalances(){
+  if (!connected) return;
+  for (const sym of Object.keys(TOKENS)){
+    try{
+      const bal = await window.ethereum.request({ method:'eth_getBalance',
+        params:[userAddress, 'latest'] });
+      balances[sym] = fmt(parseInt(bal,16)/1e18, 4);
+    }catch{ balances[sym]='–'; }
+  }
+  renderTokens();
+}
+
+// ---------- swap ----------
+async function doSwap(){
+  const amtIn = parseNum($('amountIn').value);
+  if (!amtIn) return;
+  const out = quote(amtIn, resIn_, resOut_);
+  const minOut = out * (1 - slip/100);
+
+  if (!connected || !pairContract){
+    // demo mode: just simulate the trade against the demo pool
+    demoPool.reserveIn  += amtIn;
+    demoPool.reserveOut -= out;
+    setStatus(`Demo swap: received ${fmt(out,4)} ${tokenOut} (not on-chain)`, 'ok');
+    $('amountIn').value=''; recalc();
+    return;
+  }
+  try{
+    setStatus('Sending transaction…', '');
+    const amount0Out = 0, amount1Out = 0; // filled below based on token order
+    const t0 = (await pairContract.token0()).toLowerCase();
+    const outAddr = TOKENS[tokenOut].address.toLowerCase();
+    const amtOutWei = window.ethers.utils.parseUnits(out.toFixed(18), 18);
+    const tx = (t0 === outAddr)
+      ? await pairContract.swap(amtOutWei, 0, userAddress, '0x')
+      : await pairContract.swap(0, amtOutWei, userAddress, '0x');
+    setStatus('Tx sent: '+tx.hash.slice(0,10)+'…', 'ok');
+    await tx.wait();
+    setStatus('Swap confirmed ✔', 'ok');
+    $('amountIn').value=''; refreshBalances(); recalc();
+  }catch(e){
+    setStatus('Swap failed: '+(e.reason||e.message||e).toString().slice(0,60), 'err');
+  }
+}
+
+function setStatus(msg, cls){ const s=$('status'); s.textContent=msg; s.className='status '+cls; }
+
+// ---------- events ----------
+$('amountIn').addEventListener('input', recalc);
+$('flipBtn').onclick = ()=>{ [tokenIn,tokenOut]=[tokenOut,tokenIn]; renderTokens(); recalc(); };
+$('tokenInBtn').onclick  = ()=>openModal('in');
+$('tokenOutBtn').onclick = ()=>openModal('out');
+$('modalClose').onclick  = ()=>$('modal').classList.remove('open');
+$('modal').onclick = e=>{ if(e.target.id==='modal') $('modal').classList.remove('open'); };
+$('connectBtn').onclick = connect;
+$('swapBtn').onclick = doSwap;
+$('settingsBtn').onclick = e=>{ e.stopPropagation(); $('settingsPanel').classList.toggle('open'); };
+document.addEventListener('click', ()=>$('settingsPanel').classList.remove('open'));
+document.querySelectorAll('.slip-row button').forEach(b=>{
+  b.onclick = ()=>{
+    document.querySelectorAll('.slip-row button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); slip = parseFloat(b.dataset.slip); recalc();
+  };
+});
+if (window.ethereum) window.ethereum.on('accountsChanged', ()=>location.reload());
+
+renderTokens(); recalc();
+</script>
+</body>
+</html>
